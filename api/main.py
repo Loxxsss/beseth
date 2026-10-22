@@ -16,7 +16,7 @@ from config import SITE_ID, clickhouse, postgres
 app = FastAPI(title="Sentinelle")
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"https://.*\.(lovable\.app|lovableproject\.com)",
+    allow_origin_regex=r"https://.*\.(lovable\.app|lovableproject\.com|aiven\.app)",
     allow_origins=[o for o in [os.getenv("FRONT_ORIGIN_EXACT")] if o],
     allow_methods=["*"],
     allow_headers=["*"],
