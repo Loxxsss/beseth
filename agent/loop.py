@@ -1,6 +1,7 @@
 """Boucle de l'agent : toutes les 2 min (20 s en replay). Owner : S."""
 from __future__ import annotations
 
+import json
 import time
 
 from agent import dedup, memory, trace
@@ -26,7 +27,8 @@ def appeler(site_nom: str, niveau: str, message: str):
         print("[voice] appel échoué :", e)
         return None
     if isinstance(res, dict):
-        res = res.get("callSid") or res.get("conversation_id") or res.get("call_id")
+        res = next((res[k] for k in ("callSid", "call_sid", "conversation_id", "call_id", "sid", "id") if res.get(k)), None) \
+            or json.dumps(res)[:200]
     return None if res is None else str(res)
 
 
