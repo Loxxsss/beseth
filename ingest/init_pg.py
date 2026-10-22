@@ -32,13 +32,24 @@ def main():
             print("[init_pg] données de démo vidées")
 
         if conn.execute("SELECT 1 FROM sites WHERE id = %s", (SITE_ID,)).fetchone():
-            print(f"[init_pg] site {SITE_ID} déjà présent : seed ignoré (--reseed pour le rejouer)")
+            print(f"[init_pg] site {SITE_ID} déjà présent : INSERT du seed ignorés (--reseed pour tout rejouer)")
+            # les UPDATE du seed (coordonnées du camping et des emplacements...) sont rejouables
+            maj = [q.strip() for q in (DB / "seed_site.sql").read_text().split(";")
+                   if q.strip() and "\n".join(l for l in q.strip().splitlines()
+                                               if not l.strip().startswith("--")).lstrip().upper().startswith("UPDATE")]
+            for q in maj:
+                conn.execute(q)
+            print(f"[init_pg] {len(maj)} UPDATE du seed appliqués")
         else:
             conn.execute((DB / "seed_site.sql").read_text())
             # le seed insère sites.id=1 explicitement : on recale la séquence
             conn.execute("SELECT setval(pg_get_serial_sequence('sites','id'), (SELECT max(id) FROM sites))")
             print("[init_pg] seed OK (seed_site.sql)")
 
+        geo = conn.execute(
+            "SELECT (SELECT count(*) FROM emplacements WHERE site_id=%s AND geom IS NOT NULL),"
+            " (SELECT geom IS NOT NULL FROM sites WHERE id=%s)", (SITE_ID, SITE_ID)).fetchone()
+        print(f"  géolocalisés : {geo[0]} emplacements, camping={'oui' if geo[1] else 'non'}")
         for t in TABLES_DEMO[::-1]:
             n = conn.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
             print(f"  {t:18s} {n}")
