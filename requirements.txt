@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+httpx
+python-dotenv
+confluent-kafka
+clickhouse-connect
+psycopg[binary]
+valkey
+anthropic
+elevenlabs
