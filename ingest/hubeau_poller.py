@@ -26,7 +26,7 @@ from config import KAFKA_TOPIC, SITE_ID
 
 HUBEAU = "https://hubeau.eaufrance.fr/api/v2/hydrometrie/observations_tr"
 PERIODE_S = 120
-RELECTURE_MIN = 30  # on relit 30 min à chaque passage : robuste aux retards de Hub'Eau
+RELECTURE_MIN = int(os.getenv("RELECTURE_MIN", "120"))  # Hub'Eau publie avec 30-60 min de retard ; doublons filtrés
 
 
 def stations_du_site() -> list[str]:
