@@ -16,6 +16,11 @@ with postgres() as c:
     n = c.execute("DELETE FROM alertes WHERE source='replay'").rowcount
     c.execute("UPDATE alertes SET verdict=NULL")
     s = c.execute("UPDATE sorties SET statut='prevue' WHERE site_id=1").rowcount
+    # sorties toujours à venir : +2 h et +4 h (heure pile), quelle que soit l'heure de la démo
+    ids = [r[0] for r in c.execute("SELECT id FROM sorties WHERE site_id=1 ORDER BY id")]
+    for i, sid in enumerate(ids):
+        c.execute("UPDATE sorties SET debut = date_trunc('hour', now()) + %s * interval '1 hour', "
+                  "libelle = regexp_replace(libelle, ' [0-9]+h$', '') WHERE id=%s", (2 + 2 * i, sid))
 print(f"Postgres  : seuils v1, {n} alertes replay supprimées, {s} sorties remises en prévue")
 
 v = valkey()
