@@ -7,6 +7,7 @@ comme en replay accéléré.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from config import clickhouse
 
@@ -15,8 +16,21 @@ from config import clickhouse
 class Tendance:
     station_code: str
     h_now: float
-    pente_mm_h: float  # la plus forte des pentes 1 h / 3 h
+    pente_mm_h: float          # la plus forte des pentes 1 h / 3 h (utilisée par decide)
     source: str
+    pente_1h: float | None = None
+    pente_3h: float | None = None
+    derniere_mesure: datetime | None = None
+
+    def age_min(self) -> float | None:
+        if not self.derniere_mesure:
+            return None
+        t = self.derniere_mesure if self.derniere_mesure.tzinfo else self.derniere_mesure.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - t).total_seconds() / 60
+
+
+def _propre(x):
+    return None if x is None or x != x else float(x)  # None / NaN -> None
 
 
 def tendances(stations: list[str]) -> dict[str, Tendance]:
@@ -29,11 +43,11 @@ def tendances(stations: list[str]) -> dict[str, Tendance]:
             parameters=params,
         ).result_rows
         vues[vue] = {r[0]: r for r in rows}
-    sources = dict(ch.query(
-        "SELECT station_code, argMax(source, ts) FROM hydro_obs "
+    meta = {r[0]: (r[1], r[2]) for r in ch.query(
+        "SELECT station_code, argMax(source, ts), max(ts) FROM hydro_obs "
         "WHERE station_code IN {stations:Array(String)} GROUP BY station_code",
         parameters=params,
-    ).result_rows)
+    ).result_rows}
 
     out = {}
     for code in stations:
@@ -41,6 +55,9 @@ def tendances(stations: list[str]) -> dict[str, Tendance]:
         r = r1 or r3
         if not r:
             continue
-        pentes = [x[2] for x in (r1, r3) if x and x[2] is not None and x[2] == x[2]]  # filtre NaN
-        out[code] = Tendance(code, float(r[1]), max(pentes, default=0.0), sources.get(code, "hubeau"))
+        p1 = _propre(r1[2]) if r1 else None
+        p3 = _propre(r3[2]) if r3 else None
+        source, t_max = meta.get(code, ("hubeau", None))
+        out[code] = Tendance(code, float(r[1]), max([p for p in (p1, p3) if p is not None], default=0.0),
+                             source, p1, p3, t_max)
     return out

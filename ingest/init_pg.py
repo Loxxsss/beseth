@@ -1,4 +1,4 @@
-"""Crée le schéma PostgreSQL (db/postgres.sql) et seed le site de démo (db/seed_site.sql). Owner : B.
+"""Crée le schéma PostgreSQL (db/postgres.sql + db/migration_*.sql) et seed le site de démo (db/seed_site.sql). Owner : B.
 
     python -m ingest.init_pg            # idempotent : le seed n'est joué que si le site n'existe pas
     python -m ingest.init_pg --reseed   # vide les données de démo et rejoue le seed (garde le schéma)
@@ -22,6 +22,10 @@ def main():
     with postgres() as conn:
         conn.execute((DB / "postgres.sql").read_text())
         print("[init_pg] schéma OK (postgres.sql)")
+        # migrations idempotentes (ADD COLUMN IF NOT EXISTS...) pour une base déjà créée
+        for mig in sorted(DB.glob("migration_*.sql")):
+            conn.execute(mig.read_text())
+            print(f"[init_pg] migration OK ({mig.name})")
 
         if a.reseed:
             conn.execute(f"TRUNCATE {', '.join(TABLES_DEMO)} RESTART IDENTITY CASCADE")

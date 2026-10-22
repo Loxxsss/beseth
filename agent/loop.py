@@ -1,7 +1,9 @@
 """Boucle de l'agent : toutes les 2 min (20 s en replay). Owner : S."""
+from __future__ import annotations
+
 import time
 
-from agent import dedup, memory
+from agent import dedup, memory, trace
 from agent.actions import planning, voice
 from agent.actions.redaction import rediger
 from agent.decide import decide
@@ -22,11 +24,12 @@ def tour(site_id: int = SITE_ID):
             continue  # VEILLE = statut orange sur la carte, rien d'envoyé
         if dedup.deja_envoyee(site_id, code, d.niveau):
             continue
+        tr = trace.construire(code, st["role"], st["delai_h"], t, seuil, d)
         appel, sms = rediger(d.niveau, code, t.pente_mm_h, d.emplacements, d.eta_h)
         call_id = voice.appeler(appel, ctx["tel_gerant"])
         if d.niveau == "CRITIQUE":
-            planning.annuler_sorties(site_id)
-        memory.enregistrer_alerte(site_id, code, d, t, appel, sms, call_id)
+            tr["sorties_annulees"] = planning.annuler_sorties(site_id)
+        memory.enregistrer_alerte(site_id, code, d, t, appel, sms, call_id, tr)
 
 
 def main():

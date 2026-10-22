@@ -27,14 +27,17 @@ def contexte_site(site_id: int) -> dict:
     }
 
 
-def enregistrer_alerte(site_id, station, decision, tendance, message, sms, call_id) -> int:
+def enregistrer_alerte(site_id, station, decision, tendance, message, sms, call_id, trace=None) -> int:
+    from psycopg.types.json import Jsonb
+
     with postgres() as conn:
         row = conn.execute(
             """INSERT INTO alertes (site_id, station_code, niveau, h_mm, pente_mm_h, eta_h,
-                                    emplacements, message, sms, call_id, source)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                                    emplacements, message, sms, call_id, source, trace)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
             (site_id, station, decision.niveau, tendance.h_now, tendance.pente_mm_h,
-             decision.eta_h, decision.emplacements, message, sms, call_id, tendance.source),
+             decision.eta_h, decision.emplacements, message, sms, call_id, tendance.source,
+             Jsonb(trace) if trace is not None else None),
         ).fetchone()
     return row[0]
 
