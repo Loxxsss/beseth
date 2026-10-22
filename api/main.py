@@ -56,11 +56,12 @@ STATIONS_META = {
 def serie(code: str, h: int = 24):
     res = clickhouse().query(
         "WITH (SELECT max(ts) FROM hydro_obs WHERE station_code={c:String}) AS t_max "
-        "SELECT ts, h_mm, source FROM hydro_obs WHERE station_code={c:String} "
+        "SELECT ts, h_mm, source FROM hydro_obs FINAL WHERE station_code={c:String} "
         "AND ts > t_max - INTERVAL {h:UInt16} HOUR ORDER BY ts",
         parameters={"c": code, "h": h},
     )
-    return [{"ts": r[0].isoformat(), "h_mm": r[1], "source": r[2]} for r in res.result_rows]
+    # FINAL : pas de doublon backfill/live ; "Z" : ClickHouse renvoie de l'UTC naïf, sans ça le front décale de 2 h
+    return [{"ts": r[0].isoformat() + "Z", "h_mm": r[1], "source": r[2]} for r in res.result_rows]
 
 
 @app.get("/site")
