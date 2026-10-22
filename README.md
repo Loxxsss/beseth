@@ -17,14 +17,19 @@ Tout est sur Aiven ; API + workers déployés sur Aiven Runtime.
 ```bash
 cp .env.example .env          # remplir les valeurs (jamais commité)
 pip install -r requirements.txt
-psql "$DATABASE_URL" -f db/postgres.sql -f db/seed_site.sql
+python -m ingest.init_pg              # schéma + seed Postgres (idempotent)
 clickhouse-client ... < db/clickhouse.sql
 python -m ingest.hubeau_poller        # flux live -> Kafka
 python -m agent.loop                  # boucle de l'agent
 uvicorn api.main:app --reload         # API
 ```
 
-Démo : `DEMO_MODE=replay python -m ingest.replay --csv data/crue.csv` (badge REPLAY dans le front).
+Vérifier l'infra : `python -m ingest.check --e2e` (ping des 4 services + message test Kafka → `hydro_obs`).
+
+Démo : couper le poller, puis `DEMO_MODE=replay python -m ingest.replay` (crue Ardèche du 16/10/2024
+08:00→17:00 TU à x180, environ 3 min ; badge REPLAY dans le front). Les horodatages sont décalés d'un offset
+constant, donc les pentes en mm/h sont celles de la vraie crue ; les vues `pente_1h` / `pente_3h` sont calées sur
+le dernier point de chaque station. `python -m ingest.replay --purge-only` efface les points rejoués.
 
 ## Équipe
 

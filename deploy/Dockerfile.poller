@@ -1,0 +1,8 @@
+# Worker d'ingestion : Hub'Eau (repli HydroPortail) -> Kafka hydro.raw toutes les 2 min. Owner : B.
+FROM python:3.11-slim
+WORKDIR /app
+ENV PYTHONUNBUFFERED=1
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+CMD ["python", "-m", "ingest.hubeau_poller"]
