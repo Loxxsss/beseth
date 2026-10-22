@@ -82,7 +82,9 @@ def site():
     delai = tr.get("delai_propagation_h") or 0
 
     with postgres() as conn:
-        nom = conn.execute("SELECT nom FROM sites WHERE id=%s", (SITE_ID,)).fetchone()
+        nom = conn.execute(
+            "SELECT nom, ST_Y(geom::geometry), ST_X(geom::geometry) FROM sites WHERE id=%s",
+            (SITE_ID,)).fetchone()
         emps = conn.execute(
             """SELECT code, h_inondation_mm, ST_Y(geom::geometry), ST_X(geom::geometry)
                FROM emplacements WHERE site_id=%s ORDER BY code""", (SITE_ID,)).fetchall()
@@ -101,6 +103,8 @@ def site():
 
     return {
         "nom": nom[0] if nom else None,
+        "lat": nom[1] if nom else None,
+        "lon": nom[2] if nom else None,
         "emplacements": [emplacement(*e) for e in emps],
         "seuils": ctx["seuils"],
         "sorties": [{"id": s[0], "libelle": s[1], "debut": s[2].isoformat(), "statut": s[3]}
