@@ -1,12 +1,14 @@
-"""Rédaction du message vocal (anglais, agent ElevenLabs « Beseth ») et du SMS campeurs (français)
-par Claude, à partir des chiffres. Owner : S.
-Le LLM ne décide rien : il met en mots une décision déjà prise par decide.py.
-"""
+"""Drafts the voice call and the campers' SMS (both in English) with Claude, from the numbers. Owner: S.
+The LLM decides nothing: it only words a decision already made by decide.py."""
 from __future__ import annotations
 
 import json
 
 import anthropic
+
+import config  # noqa: F401  (loads .env -> ANTHROPIC_API_KEY)
+
+LEVELS = {"VEILLE": "watch", "ALERTE": "alert", "CRITIQUE": "critical"}
 
 MODEL = "claude-haiku-5-5"
 
@@ -16,24 +18,22 @@ Reply with JSON only: {{"appel": "...", "sms": "..."}}
 - "appel": in ENGLISH, 2 short spoken sentences, calm and factual: the gauging station, the rise rate in cm per hour,
   the pitches affected and the estimated time before they are reached. End with:
   "Say false alarm if this is not the case."
-- "sms": in FRENCH, evacuation SMS for campers on the affected pitches, 300 characters max."""
+- "sms": in ENGLISH, evacuation SMS for campers on the affected pitches, 300 characters max."""
 
 
-def _repli(niveau, station_nom, montee_cm_h, emplacements, eta_h):
+def _fallback(niveau, station_nom, rise_cm_h, emplacements, eta_h):
     zone = f"{emplacements[0]} to {emplacements[-1]}" if emplacements else "the low pitches"
-    zone_fr = f"{emplacements[0]} à {emplacements[-1]}" if emplacements else "les emplacements bas"
-    delai = f"in about {round(eta_h)} hours" if eta_h else "soon"
-    delai_fr = f"dans environ {round(eta_h)} h" if eta_h else "prochainement"
-    appel = (f"{niveau.capitalize()} flood alert: the {station_nom} gauge is rising {montee_cm_h} centimetres per hour. "
-             f"Pitches {zone} will be reached {delai}. Say false alarm if this is not the case.")
-    sms = (f"Camping : montée de la rivière. Merci de libérer les emplacements {zone_fr} {delai_fr}. "
-           f"Suivez les consignes de l'accueil.")
+    delay = f"in about {round(eta_h)} hours" if eta_h else "soon"
+    appel = (f"{LEVELS.get(niveau, niveau).capitalize()} flood alert: the {station_nom} gauge is rising {rise_cm_h} centimetres per hour. "
+             f"Pitches {zone} will be reached {delay}. Say false alarm if this is not the case.")
+    sms = (f"Campsite alert: the river is rising. Please move out of pitches {zone} {delay} "
+           f"and follow reception's instructions.")
     return appel, sms
 
 
 def rediger(niveau, station_nom, pente_mm_h, emplacements, eta_h) -> tuple[str, str]:
     data = {
-        "level": niveau,
+        "level": LEVELS.get(niveau, niveau),
         "station": station_nom,
         "rise_cm_per_hour": round(pente_mm_h / 10, 1),
         "pitches": emplacements,
@@ -42,14 +42,16 @@ def rediger(niveau, station_nom, pente_mm_h, emplacements, eta_h) -> tuple[str, 
     try:
         msg = anthropic.Anthropic().messages.create(
             model=MODEL,
-            max_tokens=400,
+            max_tokens=2000,
             messages=[{"role": "user", "content": PROMPT.format(data=json.dumps(data, ensure_ascii=False))}],
         )
-        txt = msg.content[0].text.strip()
-        txt = txt[txt.find("{"): txt.rfind("}") + 1]  # tolère un éventuel ```json
+        txt = next(b.text for b in msg.content if getattr(b, "type", "") == "text").strip()
+        if "{" not in txt:
+            raise ValueError(f"no JSON (stop={msg.stop_reason}): {txt[:200]!r}")
+        txt = txt[txt.find("{"): txt.rfind("}") + 1]  # tolerates a ```json fence
         out = json.loads(txt)
         return out["appel"], out["sms"]
     except Exception as e:
-        # repli sans LLM : la démo ne doit jamais tomber à cause de la rédaction
-        print("[redaction] repli sans LLM :", e)
-        return _repli(niveau, station_nom, data["rise_cm_per_hour"], emplacements, eta_h)
+        # no-LLM fallback: the demo must never fail because of drafting
+        print("[redaction] fallback without LLM:", e)
+        return _fallback(niveau, station_nom, data["rise_cm_per_hour"], emplacements, eta_h)
