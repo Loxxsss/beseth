@@ -3,7 +3,7 @@ Partagé par agent/loop.py (enregistré dans alertes.trace) et api/main.py (/sta
 """
 from __future__ import annotations
 
-PERIMEE_MIN = 30  # dernière mesure live plus vieille que ça -> statut "perimee"
+PERIMEE_MIN = 90  # dernière mesure live plus vieille que ça -> statut "perimee"
 
 
 def statut(decision, tendance) -> str:
