@@ -1,62 +1,91 @@
-"""Backtest : rejoue des crues passées hors ligne avec la même decide(). Owner : S.
+"""Backtest : rejoue une crue réelle hors ligne avec la même decide() que l'agent live. Owner : S.
 
-Entrée : un CSV par crue (station_code,ts,h_mm) + l'heure du pic connue.
-Sortie : backtest/results.json avec, pour l'agent ET pour la baseline naïve
-(alerte quand h > seuil fixe), l'avance en heures sur le pic et le nombre de fausses alertes.
+Entrée : CSV au format replay (station_code,ts,h_mm), plusieurs stations possibles.
+Compare trois stratégies sur le moment où le 1er emplacement (A1) est touché :
+  - naive    : alerte quand la hauteur à Vallon dépasse un seuil fixe (2 m)
+  - agent_ref: l'agent avec la seule station du site (pente + ETA)
+  - agent    : l'agent complet (station du site + station amont)
+Compte aussi les fausses alertes avant le début de la crue.
 
-python -m backtest.run data/crue1.csv data/crue2.csv ...
+python -m backtest.run data/crue_ardeche_2024-10.csv
 """
 import csv
 import json
 import sys
 from datetime import datetime
-from statistics import median
 
 from agent.decide import decide
 
-SEUIL = {"pente_alerte_mm_h": 80, "h_alerte_mm": 1800}   # mêmes valeurs que seed_site.sql
-EMPLACEMENTS = [(f"A{i}", 2000 + 50 * (i - 1)) for i in range(1, 9)]
-SEUIL_NAIF_MM = 2000                                      # baseline : alerte quand h > 2 m
+REF, AMONT = "V505401001", "V501401001"
+DELAI_AMONT_H = 5
+SEUILS = {REF: {"pente_alerte_mm_h": 150, "h_alerte_mm": 2500},
+          AMONT: {"pente_alerte_mm_h": 150, "h_alerte_mm": 2000}}
+EMPLACEMENTS = [(f"A{i}", 3000 + 200 * (i - 1)) for i in range(1, 9)]  # mêmes valeurs que seed_site.sql
+SEUIL_NAIF_MM = 2000
 
 
 def charger(path):
+    series = {}
     with open(path) as f:
-        rows = [(datetime.fromisoformat(r["ts"].replace("Z", "+00:00")), float(r["h_mm"])) for r in csv.DictReader(f)]
-    return sorted(rows)
+        for r in csv.DictReader(f):
+            t = datetime.fromisoformat(r["ts"].replace("Z", "+00:00"))
+            series.setdefault(r["station_code"], []).append((t, float(r["h_mm"])))
+    return {k: sorted(v) for k, v in series.items()}
 
 
-def pente(rows, i, fenetre_h=1.0):
-    t1, h1 = rows[i]
-    pts = [(t, h) for t, h in rows[: i + 1] if (t1 - t).total_seconds() <= fenetre_h * 3600]
+def pente(serie, i, fenetre_h):
+    t1, h1 = serie[i]
+    pts = [p for p in serie[: i + 1] if (t1 - p[0]).total_seconds() <= fenetre_h * 3600]
     if len(pts) < 2:
         return 0.0
-    (t0, h0) = pts[0]
-    dt = (t1 - t0).total_seconds() / 3600
-    return (h1 - h0) / dt if dt else 0.0
+    dt = (t1 - pts[0][0]).total_seconds() / 3600
+    return (h1 - pts[0][1]) / dt if dt > 0.2 else 0.0
 
 
-def evaluer(rows):
-    t_pic = max(rows, key=lambda r: r[1])[0]
-    premiere_agent = premiere_naif = None
-    for i, (t, h) in enumerate(rows):
-        d = decide(h, max(pente(rows, i, 1), pente(rows, i, 3)), 0, SEUIL, EMPLACEMENTS)
-        if premiere_agent is None and d.niveau in ("ALERTE", "CRITIQUE"):
-            premiere_agent = t
-        if premiere_naif is None and h > SEUIL_NAIF_MM:
-            premiere_naif = t
-    avance = lambda t0: None if t0 is None else round((t_pic - t0).total_seconds() / 3600, 1)
-    return {"avance_agent_h": avance(premiere_agent), "avance_naif_h": avance(premiere_naif)}
+def premieres_alertes(serie, seuil, amont):
+    """Liste des instants où decide() passe en ALERTE/CRITIQUE (front montant)."""
+    out, actif = [], False
+    for i, (t, h) in enumerate(serie):
+        p = max(pente(serie, i, 1), pente(serie, i, 3))
+        d = decide(h, p, DELAI_AMONT_H if amont else 0, seuil, EMPLACEMENTS, amont=amont)
+        on = d.niveau in ("ALERTE", "CRITIQUE")
+        if on and not actif:
+            out.append(t)
+        actif = on
+    return out
 
 
-def main(paths):
-    res = {p: evaluer(charger(p)) for p in paths}
-    agent = [r["avance_agent_h"] for r in res.values() if r["avance_agent_h"] is not None]
-    naif = [r["avance_naif_h"] for r in res.values() if r["avance_naif_h"] is not None]
+def main(path):
+    s = charger(path)
+    ref = s[REF]
+    t_a1 = next(t for t, h in ref if h >= EMPLACEMENTS[0][1])
+    t_pic = max(ref, key=lambda x: x[1])[0]
+    # début de crue = premier dépassement d'1 m à la station de référence
+    t_debut = next(t for t, h in ref if h >= 1000)
+
+    alertes = {
+        "naive": [next(t for t, h in ref if h > SEUIL_NAIF_MM)],
+        "agent_ref": premieres_alertes(ref, SEUILS[REF], amont=False),
+    }
+    alertes["agent"] = sorted(alertes["agent_ref"] + (premieres_alertes(s[AMONT], SEUILS[AMONT], amont=True) if AMONT in s else []))
+
+    h = lambda a, b: round((b - a).total_seconds() / 3600, 1)
+    res = {}
+    for nom, ts in alertes.items():
+        vraies = [t for t in ts if t >= min(t_debut, t_a1).replace(hour=0, minute=0)]
+        premiere = min(ts) if ts else None
+        res[nom] = {
+            "premiere_alerte": premiere.isoformat() if premiere else None,
+            "avance_sur_A1_h": h(premiere, t_a1) if premiere else None,
+            "avance_sur_pic_h": h(premiere, t_pic) if premiere else None,
+            "fausses_alertes_avant_crue": len([t for t in ts if t < t_debut.replace(hour=0, minute=0)]),
+        }
     out = {
-        "crues": res,
-        "mediane_avance_agent_h": median(agent) if agent else None,
-        "mediane_avance_naif_h": median(naif) if naif else None,
-        # TODO S : rejouer aussi des périodes SANS crue pour compter les fausses alertes
+        "crue": path,
+        "A1_touche": t_a1.isoformat(),
+        "pic": {"ts": t_pic.isoformat(), "h_mm": max(h_ for _, h_ in ref)},
+        "resultats": res,
+        "note": "1 crue réelle (Hub'Eau, oct. 2024) ; hauteurs d'emplacement hypothétiques ; à compléter par des périodes calmes pour un vrai taux de fausses alertes",
     }
     with open("backtest/results.json", "w") as f:
         json.dump(out, f, indent=2, ensure_ascii=False)
@@ -64,4 +93,4 @@ def main(paths):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    main(sys.argv[1] if len(sys.argv) > 1 else "data/crue_ardeche_2024-10.csv")

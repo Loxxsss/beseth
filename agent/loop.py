@@ -15,7 +15,8 @@ def tour(site_id: int = SITE_ID):
         seuil = ctx["seuils"].get(code)
         if not seuil:
             continue
-        d = decide(t.h_now, t.pente_mm_h, ctx["stations"][code]["delai_h"], seuil, ctx["emplacements"])
+        st = ctx["stations"][code]
+        d = decide(t.h_now, t.pente_mm_h, st["delai_h"], seuil, ctx["emplacements"], amont=st["role"] == "amont")
         print(f"{code} h={t.h_now:.0f}mm pente={t.pente_mm_h:.0f}mm/h -> {d.niveau} {d.emplacements}")
         if d.niveau in (None, "VEILLE"):
             continue  # VEILLE = statut orange sur la carte, rien d'envoyé

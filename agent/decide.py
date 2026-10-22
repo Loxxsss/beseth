@@ -28,8 +28,17 @@ def eta_par_emplacement(h_now, pente_mm_h, delai_h, emplacements):
     return out
 
 
-def decide(h_now, pente_mm_h, delai_h, seuil, emplacements) -> Decision:
-    """seuil : dict(pente_alerte_mm_h, h_alerte_mm)"""
+def decide(h_now, pente_mm_h, delai_h, seuil, emplacements, amont=False) -> Decision:
+    """seuil : dict(pente_alerte_mm_h, h_alerte_mm)
+    amont=True : station en amont, ses hauteurs ne sont pas comparables aux emplacements ;
+    on alerte sur la vitesse de montée, avec l'ETA = délai de propagation jusqu'au site."""
+    if amont:
+        tous = [c for c, _ in emplacements]
+        if pente_mm_h > seuil["pente_alerte_mm_h"] or h_now > seuil["h_alerte_mm"]:
+            return Decision("ALERTE", delai_h, tous)
+        if pente_mm_h > 0.5 * seuil["pente_alerte_mm_h"]:
+            return Decision("VEILLE", delai_h, tous)
+        return Decision(None)
     etas = eta_par_emplacement(h_now, pente_mm_h, delai_h, emplacements)
     menaces = sorted((c for c, e in etas.items() if e < ETA_MENACE_H), key=etas.get)
     eta_min = min((etas[c] for c in menaces), default=None)
