@@ -9,6 +9,8 @@ Hauteurs (grandeur_hydro=H) en mm.
     python -m ingest.hubeau_poller --direct     # plan B : écrit dans ClickHouse sans Kafka
 
 Stations : table site_stations (PostgreSQL) du SITE_ID ; à défaut, variable STATIONS=a,b.
+Source : Hub'Eau, avec repli automatique sur HydroPortail si l'API ne répond pas
+(HYDRO_SOURCE=auto par défaut ; hubeau ou hydroportail pour forcer).
 À couper pendant un replay (sinon live et rejoué se mélangent).
 """
 import argparse
@@ -65,6 +67,22 @@ def fetch(stations: list[str], depuis: datetime) -> list[dict]:
             out += body.get("data", [])
             url, params = body.get("next"), None
     return out
+
+
+def fetch_auto(stations: list[str], depuis: datetime, source: str = "auto") -> tuple[list[dict], str]:
+    """Hub'Eau d'abord ; si l'API est injoignable (réseau du lieu, panne), repli sur HydroPortail.
+    HYDRO_SOURCE=hubeau | hydroportail | auto (défaut)."""
+    if source in ("auto", "hubeau"):
+        try:
+            return fetch(stations, depuis), "hubeau"
+        except Exception as e:
+            if source == "hubeau":
+                raise
+            print(f"[poller] Hub'Eau KO ({type(e).__name__}), repli HydroPortail", file=sys.stderr)
+    from ingest import hydroportail
+
+    obs = hydroportail.fetch_all(stations, depuis, datetime.now(timezone.utc))
+    return [o for o in obs if o["date_obs"] >= depuis.strftime("%Y-%m-%dT%H:%M:%SZ")], "hydroportail"
 
 
 def to_message(obs: dict) -> dict | None:
@@ -126,15 +144,17 @@ def main():
 
     stations, dernier_ts = stations_du_site(), {}
     send = envoyeur(mode)
-    print(f"[poller] {len(stations)} stations {stations}, mode={mode}, toutes les {PERIODE_S}s")
+    source = os.getenv("HYDRO_SOURCE", "auto")
+    print(f"[poller] {len(stations)} stations {stations}, mode={mode}, source={source}, toutes les {PERIODE_S}s")
     while True:
         t0 = time.time()
         try:
             depuis = datetime.now(timezone.utc) - timedelta(minutes=RELECTURE_MIN)
-            msgs = nouveaux(fetch(stations, depuis), dernier_ts)
+            obs, via = fetch_auto(stations, depuis, source)
+            msgs = nouveaux(obs, dernier_ts)
             if msgs:
                 send(msgs)
-            print(f"[poller] {datetime.now():%H:%M:%S} {len(msgs)} nouvelles mesures")
+            print(f"[poller] {datetime.now():%H:%M:%S} {len(msgs)} nouvelles mesures (via {via})")
         except Exception as e:  # la boucle ne meurt jamais pour une erreur réseau
             print(f"[poller] ERREUR {type(e).__name__}: {e}", file=sys.stderr)
         if a.once:

@@ -1,0 +1,7 @@
+.env
+certs/
+.venv/
+__pycache__/
+*.pyc
+.git/
+backtest/results.json

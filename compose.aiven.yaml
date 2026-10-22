@@ -1,0 +1,32 @@
+# Déploiement Aiven Runtime (Deploy application -> repo beseth -> ce fichier -> Scan).
+# Pas de depends_on : Kafka, ClickHouse, PostgreSQL et Valkey existent déjà sur le projet
+# berenger-874c ; leurs accès sont des secrets à saisir dans la console (voir deploy/RUNTIME.md).
+services:
+  api:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      - KAFKA_TOPIC=hydro.raw
+      - SITE_ID=1
+      - DEMO_MODE=live
+
+  poller:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.poller
+    environment:
+      - KAFKA_TOPIC=hydro.raw
+      - SITE_ID=1
+      - HYDRO_SOURCE=auto
+
+  agent:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.agent
+    environment:
+      - KAFKA_TOPIC=hydro.raw
+      - SITE_ID=1
+      - DEMO_MODE=live
