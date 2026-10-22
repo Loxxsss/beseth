@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS alertes (
   sms           text,
   call_id       text,
   source        text NOT NULL DEFAULT 'hubeau',   -- hubeau | replay
+  trace         jsonb,                            -- chiffres qui ont motivé la décision (affichés par le front)
   verdict       text CHECK (verdict IN ('fausse_alerte', 'confirmee')),
   cree_le       timestamptz NOT NULL DEFAULT now()
 );

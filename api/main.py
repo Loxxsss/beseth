@@ -32,17 +32,23 @@ def health():
 def stations():
     """code, nom, lat, lon, h_now, pente, source, statut pour chaque station du site.
     Fenêtre mesurée sur max(ts) de la station (fonctionne en live et en replay)."""
+    from agent import trace
+    from agent.decide import decide
     from agent.trend import tendances
 
     ctx = memory.contexte_site(SITE_ID)
     out = []
     for code, t in tendances(list(ctx["stations"])).items():
-        seuil = ctx["seuils"].get(code, {})
-        pa = seuil.get("pente_alerte_mm_h", 150)
-        statut = "alerte" if t.pente_mm_h > pa else "veille" if t.pente_mm_h > 0.5 * pa else "normal"
-        out.append({**STATIONS_META.get(code, {"code": code}), "h_now": t.h_now,
-                    "pente_mm_h": round(t.pente_mm_h), "source": t.source, "statut": statut,
-                    "role": ctx["stations"][code]["role"]})
+        seuil = ctx["seuils"].get(code)
+        st = ctx["stations"][code]
+        if not seuil:
+            continue
+        d = decide(t.h_now, t.pente_mm_h, st["delai_h"], seuil, ctx["emplacements"], amont=st["role"] == "amont")
+        out.append({**STATIONS_META.get(code, {"code": code}),
+                    "h_now": t.h_now, "pente_mm_h": round(t.pente_mm_h), "source": t.source,
+                    "role": st["role"],
+                    "statut": trace.statut(d, t),  # normal | veille | alerte | critique | perimee
+                    "trace": trace.construire(code, st["role"], st["delai_h"], t, seuil, d)})
     return out
 
 
@@ -83,12 +89,12 @@ def alertes():
     with postgres() as conn:
         rows = conn.execute(
             """SELECT id, station_code, niveau, h_mm, pente_mm_h, eta_h, emplacements,
-                      message, sms, source, verdict, cree_le
+                      message, sms, source, verdict, trace, cree_le
                FROM alertes WHERE site_id=%s ORDER BY cree_le DESC LIMIT 50""",
             (SITE_ID,),
         ).fetchall()
     keys = ["id", "station_code", "niveau", "h_mm", "pente_mm_h", "eta_h", "emplacements",
-            "message", "sms", "source", "verdict", "cree_le"]
+            "message", "sms", "source", "verdict", "trace", "cree_le"]
     return [dict(zip(keys, r[:-1] + (r[-1].isoformat(),))) for r in rows]
 
 
