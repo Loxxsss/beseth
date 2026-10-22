@@ -1,8 +1,6 @@
-node_modules/
 .env
-.env.*
+certs/
 __pycache__/
+*.pyc
 .venv/
-dist/
-build/
-.DS_Store
+backtest/results.json
