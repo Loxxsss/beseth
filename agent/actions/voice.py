@@ -4,6 +4,8 @@ Côté ElevenLabs : créer un agent dont le premier message est {{message}},
 lui associer un numéro, puis remplir ELEVENLABS_AGENT_ID / ELEVENLABS_PHONE_NUMBER_ID.
 Vérifier l'endpoint dans la doc ElevenLabs au premier test (10h30).
 """
+from __future__ import annotations
+
 import os
 
 import httpx

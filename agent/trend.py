@@ -1,18 +1,14 @@
-"""Tendance par station : hauteur actuelle + pente (mm/h) sur 1 h et 3 h. Owner : S."""
+"""Tendance par station : hauteur actuelle + pente (mm/h) sur 1 h et 3 h. Owner : S.
+
+Lit les vues ClickHouse de B (default.pente_1h / default.pente_3h), calées sur le
+dernier point de chaque station (temps de la donnée, pas now()) : marche en live
+comme en replay accéléré.
+"""
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 from config import clickhouse
-
-SQL = """
-SELECT station_code,
-       argMax(h_mm, ts) AS h_now,
-       simpleLinearRegression(toUnixTimestamp(ts), h_mm).1 * 3600 AS pente_mm_h,
-       argMax(source, ts) AS source
-FROM hydro_obs
-WHERE station_code IN {stations:Array(String)}
-  AND ts > now() - INTERVAL {heures:UInt8} HOUR
-GROUP BY station_code
-"""
 
 
 @dataclass
@@ -25,17 +21,26 @@ class Tendance:
 
 def tendances(stations: list[str]) -> dict[str, Tendance]:
     ch = clickhouse()
-    par_fenetre = {}
-    for heures in (1, 3):
-        res = ch.query(SQL, parameters={"stations": stations, "heures": heures})
-        par_fenetre[heures] = {r[0]: r for r in res.result_rows}
+    params = {"stations": stations}
+    vues = {}
+    for vue in ("pente_1h", "pente_3h"):
+        rows = ch.query(
+            f"SELECT station_code, h_now, pente_mm_h FROM {vue} WHERE station_code IN {{stations:Array(String)}}",
+            parameters=params,
+        ).result_rows
+        vues[vue] = {r[0]: r for r in rows}
+    sources = dict(ch.query(
+        "SELECT station_code, argMax(source, ts) FROM hydro_obs "
+        "WHERE station_code IN {stations:Array(String)} GROUP BY station_code",
+        parameters=params,
+    ).result_rows)
 
     out = {}
     for code in stations:
-        r1, r3 = par_fenetre[1].get(code), par_fenetre[3].get(code)
+        r1, r3 = vues["pente_1h"].get(code), vues["pente_3h"].get(code)
         r = r1 or r3
         if not r:
             continue
-        pentes = [x[2] for x in (r1, r3) if x and x[2] == x[2]]  # filtre NaN
-        out[code] = Tendance(code, float(r[1]), max(pentes, default=0.0), r[3])
+        pentes = [x[2] for x in (r1, r3) if x and x[2] is not None and x[2] == x[2]]  # filtre NaN
+        out[code] = Tendance(code, float(r[1]), max(pentes, default=0.0), sources.get(code, "hubeau"))
     return out

@@ -1,4 +1,6 @@
 """Mémoire par site dans PostgreSQL : seuils, alertes, verdicts. Owner : S."""
+from __future__ import annotations
+
 from config import postgres
 
 

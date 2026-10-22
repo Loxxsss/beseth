@@ -4,6 +4,8 @@ VEILLE   : pente > 0.5 x pente_alerte
 ALERTE   : pente > pente_alerte ET au moins un emplacement avec ETA < 6 h
 CRITIQUE : ETA < 2 h OU h_now > h_alerte
 """
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 ETA_MENACE_H = 6.0
