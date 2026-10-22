@@ -28,3 +28,13 @@ INSERT INTO evenements_passes (site_id, date, h_max_mm, note) VALUES
 INSERT INTO sorties (site_id, libelle, debut) VALUES
   (1, 'Descente Vallon -> Gorges 14h', date_trunc('day', now()) + interval '14 hours'),
   (1, 'Descente Vallon -> Gorges 16h', date_trunc('day', now()) + interval '16 hours');
+
+-- coords emplacements
+UPDATE emplacements SET geom = ST_SetSRID(ST_MakePoint(4.395778608674264, 44.395815877796245), 4326) WHERE site_id = 1 AND code = 'A1';
+UPDATE emplacements SET geom = ST_SetSRID(ST_MakePoint(4.395997683984679, 44.39574282830594), 4326) WHERE site_id = 1 AND code = 'A2';
+UPDATE emplacements SET geom = ST_SetSRID(ST_MakePoint(4.396202154274399, 44.395669778724425), 4326) WHERE site_id = 1 AND code = 'A3';
+UPDATE emplacements SET geom = ST_SetSRID(ST_MakePoint(4.39664030489523, 44.395534114973984), 4326) WHERE site_id = 1 AND code = 'A4';
+UPDATE emplacements SET geom = ST_SetSRID(ST_MakePoint(4.395880843819124, 44.39600371892404), 4326) WHERE site_id = 1 AND code = 'A5';
+UPDATE emplacements SET geom = ST_SetSRID(ST_MakePoint(4.396026894026067, 44.39593066966821), 4326) WHERE site_id = 1 AND code = 'A6';
+UPDATE emplacements SET geom = ST_SetSRID(ST_MakePoint(4.396172944233011, 44.39588892719536), 4326) WHERE site_id = 1 AND code = 'A7';
+UPDATE emplacements SET geom = ST_SetSRID(ST_MakePoint(4.396421229584814, 44.395815877796245), 4326) WHERE site_id = 1 AND code = 'A8';
