@@ -147,3 +147,21 @@ def demo_replay():
 def backtest():
     p = Path("backtest/results.json")
     return json.loads(p.read_text()) if p.exists() else {"status": "pas encore lancé"}
+
+
+# --- Front Lovable servi par la même app (owner : B) -------------------------------
+# Si web/index.html existe (build Lovable copié dans web/), on le sert sur la même URL
+# que l'API : un seul déploiement Runtime, pas de CORS. Déclaré en DERNIER : les routes
+# de l'API ci-dessus restent prioritaires ; tout autre chemin renvoie le fichier demandé
+# ou index.html (routage côté client de la SPA).
+WEB = Path(__file__).resolve().parent.parent / "web"
+
+if (WEB / "index.html").is_file():
+    from fastapi.responses import FileResponse
+
+    @app.get("/{chemin:path}", include_in_schema=False)
+    def front(chemin: str):
+        f = (WEB / chemin).resolve()
+        if chemin and f.is_file() and WEB.resolve() in f.parents:
+            return FileResponse(f)
+        return FileResponse(WEB / "index.html")
