@@ -30,24 +30,34 @@ def health():
 
 @app.get("/stations")
 def stations():
-    """code, h_now, pente, source pour chaque station du site (lat/lon : à ajouter via Hub'Eau référentiel)."""
-    ch = clickhouse()
-    res = ch.query(
-        """SELECT station_code, argMax(h_mm, ts), argMax(source, ts),
-                  simpleLinearRegression(toUnixTimestamp(ts), h_mm).1 * 3600
-           FROM hydro_obs WHERE ts > now() - INTERVAL 1 HOUR GROUP BY station_code"""
-    )
-    return [
-        {"code": r[0], "h_now": r[1], "source": r[2], "pente_mm_h": r[3]}
-        for r in res.result_rows
-    ]
+    """code, nom, lat, lon, h_now, pente, source, statut pour chaque station du site.
+    Fenêtre mesurée sur max(ts) de la station (fonctionne en live et en replay)."""
+    from agent.trend import tendances
+
+    ctx = memory.contexte_site(SITE_ID)
+    out = []
+    for code, t in tendances(list(ctx["stations"])).items():
+        seuil = ctx["seuils"].get(code, {})
+        pa = seuil.get("pente_alerte_mm_h", 150)
+        statut = "alerte" if t.pente_mm_h > pa else "veille" if t.pente_mm_h > 0.5 * pa else "normal"
+        out.append({**STATIONS_META.get(code, {"code": code}), "h_now": t.h_now,
+                    "pente_mm_h": round(t.pente_mm_h), "source": t.source, "statut": statut,
+                    "role": ctx["stations"][code]["role"]})
+    return out
+
+
+STATIONS_META = {
+    "V505401001": {"code": "V505401001", "nom": "L'Ardèche à Vallon-Pont-d'Arc", "lat": 44.4005, "lon": 4.3958},
+    "V501401001": {"code": "V501401001", "nom": "L'Ardèche à Vogüé", "lat": 44.5524, "lon": 4.4145},
+}
 
 
 @app.get("/stations/{code}/serie")
 def serie(code: str, h: int = 24):
     res = clickhouse().query(
+        "WITH (SELECT max(ts) FROM hydro_obs WHERE station_code={c:String}) AS t_max "
         "SELECT ts, h_mm, source FROM hydro_obs WHERE station_code={c:String} "
-        "AND ts > now() - INTERVAL {h:UInt16} HOUR ORDER BY ts",
+        "AND ts > t_max - INTERVAL {h:UInt16} HOUR ORDER BY ts",
         parameters={"c": code, "h": h},
     )
     return [{"ts": r[0].isoformat(), "h_mm": r[1], "source": r[2]} for r in res.result_rows]
@@ -93,8 +103,9 @@ def verdict(alerte_id: int, body: Verdict):
 
 
 @app.post("/demo/replay")
-def demo_replay(csv: str = "data/crue.csv", speed: float = 60):
-    subprocess.Popen(["python", "-m", "ingest.replay", "--csv", csv, "--speed", str(speed)])
+def demo_replay():
+    # défauts de replay.py : CSV Ardèche, fenêtre 16/10 08:00 -> 17:00 TU, x180
+    subprocess.Popen(["python", "-m", "ingest.replay"])
     return {"lance": True}
 
 

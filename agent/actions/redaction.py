@@ -1,6 +1,8 @@
 """Rédaction du message vocal et du SMS par Claude, à partir des chiffres. Owner : S.
 Le LLM ne décide rien : il met en mots une décision déjà prise par decide.py.
 """
+from __future__ import annotations
+
 import json
 
 import anthropic
