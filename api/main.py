@@ -71,30 +71,53 @@ def serie(code: str, h: int = 24):
 
 
 @app.get("/site")
+@app.get("/site")
 def site():
     ctx = memory.contexte_site(SITE_ID)
-    with postgres() as conn:
-        sorties = conn.execute(
-            "SELECT id, libelle, debut, statut FROM sorties WHERE site_id=%s ORDER BY debut", (SITE_ID,)
-        ).fetchall()
-    return {
-        "emplacements": [{"code": c, "h_inondation_mm": h} for c, h in ctx["emplacements"]],
-        "seuils": ctx["seuils"],
-        "sorties": [{"id": s[0], "libelle": s[1], "debut": s[2].isoformat(), "statut": s[3]} for s in sorties],
-    }
+    st = stations()  # réutilise la route : trace + statut déjà calculés par S
+    ref = next((s for s in st if s.get("role") == "reference"), None) or {}
+    tr = ref.get("trace") or {}
+    menaces = set(tr.get("emplacements_menaces") or [])
+    h_now, pente = ref.get("h_now"), tr.get("pente_retenue_mm_h")
+    delai = tr.get("delai_propagation_h") or 0
 
+    with postgres() as conn:
+        nom = conn.execute("SELECT nom FROM sites WHERE id=%s", (SITE_ID,)).fetchone()
+        emps = conn.execute(
+            """SELECT code, h_inondation_mm, ST_Y(geom::geometry), ST_X(geom::geometry)
+               FROM emplacements WHERE site_id=%s ORDER BY code""", (SITE_ID,)).fetchall()
+        sorties = conn.execute(
+            "SELECT id, libelle, debut, statut FROM sorties WHERE site_id=%s ORDER BY debut",
+            (SITE_ID,)).fetchall()
+
+    def emplacement(code, h_inond, lat, lon):
+        touche = h_now is not None and h_inond is not None and h_now >= h_inond
+        eta = None
+        if not touche and pente and pente > 0 and h_now is not None and h_inond is not None:
+            eta = round((h_inond - h_now) / pente + delai, 1)
+        statut = "touche" if touche else "menace" if code in menaces else "sec"
+        return {"code": code, "lat": lat, "lon": lon, "h_inondation_mm": h_inond,
+                "statut": statut, "eta_h": eta}
+
+    return {
+        "nom": nom[0] if nom else None,
+        "emplacements": [emplacement(*e) for e in emps],
+        "seuils": ctx["seuils"],
+        "sorties": [{"id": s[0], "libelle": s[1], "debut": s[2].isoformat(), "statut": s[3]}
+                    for s in sorties],
+    }
 
 @app.get("/alertes")
 def alertes():
     with postgres() as conn:
         rows = conn.execute(
             """SELECT id, station_code, niveau, h_mm, pente_mm_h, eta_h, emplacements,
-                      message, sms, source, verdict, trace, cree_le
+                      message, sms, source, verdict, call_id, trace, cree_le
                FROM alertes WHERE site_id=%s ORDER BY cree_le DESC LIMIT 50""",
             (SITE_ID,),
         ).fetchall()
     keys = ["id", "station_code", "niveau", "h_mm", "pente_mm_h", "eta_h", "emplacements",
-            "message", "sms", "source", "verdict", "trace", "cree_le"]
+            "message", "sms", "source", "verdict", "call_id", "trace", "cree_le"]
     return [dict(zip(keys, r[:-1] + (r[-1].isoformat(),))) for r in rows]
 
 
