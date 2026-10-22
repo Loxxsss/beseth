@@ -53,8 +53,8 @@ def stations():
 
 
 STATIONS_META = {
-    "V505401001": {"code": "V505401001", "nom": "L'Ardèche à Vallon-Pont-d'Arc", "lat": 44.4005, "lon": 4.3958},
-    "V501401001": {"code": "V501401001", "nom": "L'Ardèche à Vogüé", "lat": 44.5524, "lon": 4.4145},
+    "V505401001": {"code": "V505401001", "nom": "L'Ardèche à Vallon-Pont-d'Arc", "lat": 44.398637, "lon": 4.384968},
+    "V501401001": {"code": "V501401001", "nom": "L'Ardèche à Vogüé", "lat": 44.542565, "lon": 4.409780},
 }
 
 
