@@ -17,7 +17,7 @@ Tout est sur Aiven ; API + workers déployés sur Aiven Runtime.
 ```bash
 cp .env.example .env          # remplir les valeurs (jamais commité)
 pip install -r requirements.txt
-psql "$DATABASE_URL" -f db/postgres.sql -f db/seed_site.sql
+python -m ingest.init_pg              # schéma + seed Postgres (idempotent)
 clickhouse-client ... < db/clickhouse.sql
 python -m ingest.hubeau_poller        # flux live -> Kafka
 python -m agent.loop                  # boucle de l'agent
