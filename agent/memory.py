@@ -18,12 +18,13 @@ def contexte_site(site_id: int) -> dict:
             "SELECT station_code, pente_alerte_mm_h, h_alerte_mm, version FROM seuils WHERE site_id=%s",
             (site_id,),
         ).fetchall()
-        tel = conn.execute("SELECT tel_gerant FROM sites WHERE id=%s", (site_id,)).fetchone()
+        tel = conn.execute("SELECT tel_gerant, nom FROM sites WHERE id=%s", (site_id,)).fetchone()
     return {
         "stations": {s[0]: {"role": s[1], "delai_h": s[2]} for s in stations},
         "emplacements": emplacements,
         "seuils": {s[0]: {"pente_alerte_mm_h": s[1], "h_alerte_mm": s[2], "version": s[3]} for s in seuils},
         "tel_gerant": tel[0] if tel else None,
+        "site_nom": tel[1] if tel else "Demo campsite",
     }
 
 
