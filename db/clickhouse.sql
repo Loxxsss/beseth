@@ -27,6 +27,8 @@ FROM `service_kafka-3f1fb19`.hydro_raw;
 -- 3) & 4) Pentes en mm/h, calées sur le TEMPS DE LA DONNÉE (max(ts) par station),
 --    pas sur now() : en replay accéléré, les ts décalés sont dans le futur.
 --    En live, max(ts) ≈ now, donc même comportement. (validé avec S)
+--    Seuls les points de la même source que le dernier point comptent : sinon, en replay,
+--    la fenêtre 3 h mélangeait la crue rejouée et les mesures réelles du jour (pente faussée).
 --    À utiliser par agent/trend.py et GET /stations à la place de "ts > now() - ...".
 CREATE OR REPLACE VIEW default.pente_1h AS
 SELECT o.station_code AS station_code,
@@ -34,9 +36,11 @@ SELECT o.station_code AS station_code,
        simpleLinearRegression(toUnixTimestamp(o.ts), o.h_mm).1 * 3600 AS pente_mm_h,
        max(o.ts) AS ts_now
 FROM default.hydro_obs AS o FINAL
-INNER JOIN (SELECT station_code, max(ts) AS tmax FROM default.hydro_obs GROUP BY station_code) AS m
+INNER JOIN (SELECT station_code, max(ts) AS tmax, argMax(source, ts) AS src
+            FROM default.hydro_obs GROUP BY station_code) AS m
         ON o.station_code = m.station_code
 WHERE o.ts > m.tmax - INTERVAL 1 HOUR
+  AND o.source = m.src   -- pas de mélange replay / mesures réelles dans la fenêtre
 GROUP BY o.station_code;
 
 CREATE OR REPLACE VIEW default.pente_3h AS
@@ -45,9 +49,11 @@ SELECT o.station_code AS station_code,
        simpleLinearRegression(toUnixTimestamp(o.ts), o.h_mm).1 * 3600 AS pente_mm_h,
        max(o.ts) AS ts_now
 FROM default.hydro_obs AS o FINAL
-INNER JOIN (SELECT station_code, max(ts) AS tmax FROM default.hydro_obs GROUP BY station_code) AS m
+INNER JOIN (SELECT station_code, max(ts) AS tmax, argMax(source, ts) AS src
+            FROM default.hydro_obs GROUP BY station_code) AS m
         ON o.station_code = m.station_code
 WHERE o.ts > m.tmax - INTERVAL 3 HOUR
+  AND o.source = m.src   -- pas de mélange replay / mesures réelles dans la fenêtre
 GROUP BY o.station_code;
 
 -- Vérif rapide :
